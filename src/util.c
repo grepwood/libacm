@@ -21,6 +21,7 @@
 #endif
 
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "libacm.h"
@@ -118,13 +119,13 @@ int acm_open_file(ACMStream **res, const char *filename, int force_chans)
  * utility functions
  */
 
-static unsigned pcm2time(ACMStream *acm, unsigned long long pcm)
+static uint32_t pcm2time(ACMStream *acm, uint64_t pcm)
 {
 	return pcm * 1000 / acm->info.rate;
 	/* return ((10 * pcm) / acm->info.rate) * 100; */
 }
 
-static unsigned time2pcm(ACMStream *acm, unsigned long long time_ms)
+static uint32_t time2pcm(ACMStream *acm, uint64_t time_ms)
 {
 	return time_ms * acm->info.rate / 1000;
 	/* return (time_ms / 100) * (acm->info.rate / 10); */
@@ -154,9 +155,9 @@ int acm_seekable(ACMStream *acm)
 	return acm->data_len > 0;
 }
 
-unsigned acm_bitrate(ACMStream *acm)
+uint32_t acm_bitrate(ACMStream *acm)
 {
-	unsigned long long bits, time, bitrate = 0;
+	uint64_t bits, time, bitrate = 0;
 
 	if (acm_raw_total(acm) == 0)
 		return 13000;
