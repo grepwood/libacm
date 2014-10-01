@@ -102,9 +102,9 @@ struct ACMStream {
 typedef struct ACMStream ACMStream;
 
 /* acmtool.c */
-void libacm_show_info(const char *fn);
+void libacm_show_info(const char *fn,int cf_force_chans);
 void libacm_set_channels(const char *fn, int n_chan);
-void libacm_decode_file(const char *fn, const char *fn2);
+void libacm_decode_file(const char *fn, const char *fn2, int cf_force_chans);
 char * libacm_makefn(const char *fn, const char *ext);
 
 /* decode.c */
