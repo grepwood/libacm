@@ -25,17 +25,35 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <getopt.h>
 #include <string.h>
 
 #include "libacm.h"
-
-static const char * version = "acmtool - libacm version " LIBACM_VERSION;
 
 static int cf_raw = 0;
 static int cf_force_chans = 0;
 static int cf_no_output = 0;
 static int cf_quiet = 0;
+
+/* error strings */
+static const char *_errlist[] = {
+	"No error",
+	"ACM error",
+	"Cannot open file",
+	"Not an ACM file",
+	"Read error",
+	"Bad format",
+	"Corrupt file",
+	"Unexcpected EOF",
+	"Stream not seekable"
+};
+
+const char * libacm_strerror(int err)
+{
+	int nerr = sizeof(_errlist) / sizeof(char *);
+	if ((-err) < 0 || (-err) >= nerr)
+		return "Unknown error";
+	return _errlist[-err];
+}
 
 static void show_header(const char *fn, ACMStream *acm)
 {
@@ -227,17 +245,56 @@ static int write_wav_header(FILE *f, ACMStream *acm)
 		return 0;
 }
 
-void libacm_decode_file(const char *fn, const char *fn2)
-{
+static int get_sample_count(const char * fn, uint32_t * wavsize) {
+	FILE * acmfile = fopen(fn,"rb");
+	if(!acmfile) {
+		fprintf(stderr, "%s: empty of nonexistent file\n",fn);
+		fclose(acmfile);
+		return 1;
+	}
+	if(fseek(acmfile,4,SEEK_SET)) {
+		fprintf(stderr, "%s: can’t fseek in this file\n",fn);
+		fclose(acmfile);
+		return 2;
+	}
+	if(fread(wavsize,4,1,acmfile) != 1) {
+		fprintf(stderr, "%s: read file incorrect amount of times\n",fn);
+		fclose(acmfile);
+		return 4;
+	}
+#ifdef __BIG_ENDIAN__
+	*wavsize = acm_swap32(*wavsize);
+#endif
+	fclose(acmfile);
+	return 0;
+}
+
+char * libacm_decode_file_to_mem(const char *fn, unsigned char cf_fc) {
+	ACMStream *acm;
+	char * buf;
+	uint32_t wavsize;
+	int res, res2, buflen, err;
+	FILE * memory;
+	char * result = NULL;
+	int bytes_done = 0, total_bytes;
+
+	if((err = acm_open_file(&acm, fn, cf_force_chans)) < 0) {
+		fprintf(stderr,"%s: %s\n",fn,libacm_strerror(err));
+		return result;
+	}
+	/* todo */
+	return result;
+}
+
+void libacm_decode_file(const char *fn, const char *fn2) {
 	ACMStream *acm;
 	char *buf;
 	int res, res2, buflen, err;
 	FILE *fo = NULL;
 	int bytes_done = 0, total_bytes;
 
-	err = acm_open_file(&acm, fn, cf_force_chans);
-	if (err < 0) {
-		fprintf(stderr, "%s: %s\n", fn, acm_strerror(err));
+	if ((err = acm_open_file(&acm,fn,cf_force_chans)) < 0) {
+		fprintf(stderr, "%s: %s\n", fn, libacm_strerror(err));
 		return;
 	}
 
@@ -265,14 +322,14 @@ void libacm_decode_file(const char *fn, const char *fn2)
 			return;
 		}
 	}
-	buflen = 16*1024;
+	buflen = 16384;
 	buf = (char*)malloc(buflen);
 
 	total_bytes = acm_pcm_total(acm) * acm_channels(acm) * ACM_WORD;
 	
 	while (bytes_done < total_bytes) {
 		res = acm_read_loop(acm, buf, buflen/2, 0,2,1);
-		if (res == 0)
+		if (!res)
 			break;
 		if (res > 0) {
 			if (!cf_no_output) {
@@ -284,7 +341,7 @@ void libacm_decode_file(const char *fn, const char *fn2)
 			}
 			bytes_done += res;
 		} else {
-			fprintf(stderr, "%s: %s\n", fn, acm_strerror(res));
+			fprintf(stderr, "%s: %s\n", fn, libacm_strerror(res));
 			break;
 		}
 	}
@@ -371,7 +428,7 @@ void libacm_show_info(const char *fn)
 
 	err = acm_open_file(&acm, fn, cf_force_chans);
 	if (err < 0) {
-		printf("%s: %s\n", fn, acm_strerror(err));
+		printf("%s: %s\n", fn, libacm_strerror(err));
 		return;
 	}
 

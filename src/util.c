@@ -2,6 +2,7 @@
  * Utility functions for libacm.
  *
  * Copyright (c) 2004-2010, Marko Kreen
+ * Copyright (c) 2014, Michael Dec
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -29,53 +30,23 @@
 #define WAVC_HEADER_LEN	28
 #define ACM_HEADER_LEN	14
 
-/*
- * error strings
- */
-static const char *_errlist[] = {
-	"No error",
-	"ACM error",
-	"Cannot open file",
-	"Not an ACM file",
-	"Read error",
-	"Bad format",
-	"Corrupt file",
-	"Unexcpected EOF",
-	"Stream not seekable"
-};
-
-const char *acm_strerror(int err)
-{
-	int nerr = sizeof(_errlist) / sizeof(char *);
-	if ((-err) < 0 || (-err) >= nerr)
-		return "Unknown error";
-	return _errlist[-err];
-}
-
-/*
- * File IO using stdio
- */
-
-static int _read_file(void *ptr, int size, int n, void *arg)
-{
+/* File IO using stdio */
+static int _read_file(void *ptr, int size, int n, void *arg) {
 	FILE *f = (FILE *)arg;
 	return fread(ptr, size, n, f);
 }
                                                                                 
-static int _close_file(void *arg)
-{
+static int _close_file(void *arg) {
 	FILE *f = (FILE *)arg;
 	return fclose(f);
 }
                                                                                 
-static int _seek_file(void *arg, int offset, int whence)
-{
+static int _seek_file(void *arg, int offset, int whence) {
 	FILE *f = (FILE *)arg;
 	return fseek(f, offset, whence);
 }
 
-static int _get_length_file(void *arg)
-{
+static int _get_length_file(void *arg) {
 	FILE *f = (FILE *)arg;
 	int res, pos, len = -1;
 
@@ -115,9 +86,7 @@ int acm_open_file(ACMStream **res, const char *filename, int force_chans)
 	return 0;
 }
 
-/*
- * utility functions
- */
+/* utility functions */
 
 static uint32_t pcm2time(ACMStream *acm, uint64_t pcm)
 {
