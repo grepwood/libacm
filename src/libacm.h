@@ -19,7 +19,7 @@
 #ifndef __LIBACM_H
 #define __LIBACM_H
 
-#define LIBACM_VERSION "1.1"
+#define LIBACM_VERSION "1.3"
 
 #define ACM_ID		0x032897
 #define ACM_WORD	2
@@ -33,6 +33,19 @@
 #define ACM_ERR_CORRUPT		-6
 #define ACM_ERR_UNEXPECTED_EOF	-7
 #define ACM_ERR_NOT_SEEKABLE	-8
+
+#if defined __GNUC__ && defined linux
+#	include <byteswap.h>
+#	define acm_swap32 __bswap_32
+#elif defined __APPLE__
+#	include <libkern/OSByteOrder.h>
+#	define acm_swap32 OSSwapConstInt32
+#elif defined _MSC_VER
+#	include <stdlib.h>
+#	define acm_swap32 _byteswap_ulong
+#else
+#	error “Your compiler is not supported yet.”
+#endif
 
 typedef struct ACMInfo {
 	unsigned channels;
@@ -88,6 +101,12 @@ struct ACMStream {
 };
 typedef struct ACMStream ACMStream;
 
+/* acmtool.c */
+void libacm_show_info(const char *fn);
+void libacm_set_channels(const char *fn, int n_chan);
+void libacm_decode_file(const char *fn, const char *fn2);
+char * libacm_makefn(const char *fn, const char *ext);
+
 /* decode.c */
 int acm_open_decoder(ACMStream **res, void *io_arg, acm_io_callbacks io, int force_chans);
 int acm_read(ACMStream *acm, void *buf, unsigned nbytes,
@@ -114,4 +133,3 @@ int acm_seek_time(ACMStream *acm, unsigned pos_ms);
 const char *acm_strerror(int err);
 
 #endif
-
