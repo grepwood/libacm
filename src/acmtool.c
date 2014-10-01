@@ -2,6 +2,7 @@
  * Command line tool for ACM manipulating.
  *
  * Copyright (c) 2004-2010, Marko Kreen
+ * Copyright (c) 2014, Michael Dec
  *
  * Permission to use, copy, modify, and/or distribute this software for any
  * purpose with or without fee is hereby granted, provided that the above
@@ -159,7 +160,7 @@ static void play_file(const char *fn)
  * WAV writing
  */
 
-static char * makefn(const char *fn, const char *ext)
+char * libacm_makefn(const char *fn, const char *ext)
 {
 	char *dstfn, *p;
 	dstfn = (char*)malloc(strlen(fn) + strlen(ext) + 2);
@@ -226,7 +227,7 @@ static int write_wav_header(FILE *f, ACMStream *acm)
 		return 0;
 }
 
-static void decode_file(const char *fn, const char *fn2)
+void libacm_decode_file(const char *fn, const char *fn2)
 {
 	ACMStream *acm;
 	char *buf;
@@ -317,7 +318,7 @@ static void decode_file(const char *fn, const char *fn2)
  * Modify header
  */
 
-static void set_channels(const char *fn, int n_chan)
+void libacm_set_channels(const char *fn, int n_chan)
 {
 	FILE *f;
 	static const unsigned char acm_id[] = { 0x97, 0x28, 0x03, 0x01 };
@@ -363,7 +364,7 @@ static void set_channels(const char *fn, int n_chan)
  * Just show info
  */
 
-static void show_info(const char *fn)
+void libacm_show_info(const char *fn)
 {
 	int err;
 	ACMStream *acm;
@@ -377,139 +378,3 @@ static void show_info(const char *fn)
 	show_header(fn, acm);
 	acm_close(acm);
 }
-
-static void usage(int err)
-{
-	printf("%s\n", version);
-	printf("Play:   acmtool -p [-q][-m|-s] acmfile [acmfile ...]\n");
-	printf("Decode: acmtool -d [-q][-m|-s] [-r|-n] -o wavfile acmfile\n");
-	printf("        acmtool -d [-q][-m|-s] [-r|-n] acmfile [acmfile ...]\n");
-	printf("Other:  acmtool -i acmfile [acmfile ...]\n");
-	printf("        acmtool -M|-S acmfile [acmfile ...]\n");
-	printf("Commands:\n");
-	printf("  -p     play file(s)\n");
-	printf("  -d     decode audio into WAV files\n");
-	printf("  -i     show info about ACM files\n");
-	printf("  -M     modify ACM header to have 1 channel\n");
-	printf("  -S     modify ACM header to have 2 channels\n");
-	printf("Switches:\n");
-	printf("  -m     force mono\n");
-	printf("  -s     force stereo (default)\n");
-	printf("  -r     raw output - no wav header\n");
-	printf("  -q     be quiet\n");
-	printf("  -n     no output - for benchmarking\n");
-	printf("  -o FN  output to file, can be used if single source file\n");
-	exit(err);
-}
-
-int main(int argc, char *argv[])
-{
-	int c, i;
-	char *fn, *fn2 = NULL;
-	int cmd_decode = 0;
-	int cmd_chg_channels = 0;
-	int cmd_info = 0, cmd_play = 0;
-	int cf_set_chans = 0;
-
-	while ((c = getopt(argc, argv, "pdiMSqhrmsnvo:")) != -1) {
-		switch (c) {
-		case 'h':
-			usage(0);
-			break;
-		case 'd':
-			cmd_decode = 1;
-			break;
-		case 'i':
-			cmd_info = 1;
-			break;
-		case 'p':
-			cmd_play = 1;
-			break;
-		case 'M':
-			cmd_chg_channels = 1;
-			cf_set_chans = 1;
-			break;
-		case 'S':
-			cmd_chg_channels = 1;
-			cf_set_chans = 2;
-			break;
-		case 'q':
-			cf_quiet = 1;
-			break;
-		case 'm':
-			cf_force_chans = 1;
-			break;
-		case 's':
-			cf_force_chans = 2;
-			break;
-		case 'r':
-			cf_raw = 1;
-			break;
-		case 'n':
-			cf_no_output = 1;
-			break;
-		case 'o':
-			fn2 = optarg;
-			break;
-		case 'v':
-			printf("%s\n", version);
-			exit(0);
-		default:
-			fprintf(stderr, "bad arg: -%c\n", c);
-			usage(1);
-		}
-	}
-	i = cmd_chg_channels + cmd_info + cmd_decode + cmd_play;
-	if (i < 1 || i > 1) {
-		fprintf(stderr, "only one command at a time please\n");
-		usage(1);
-	}
-
-	/* play file */
-	if (cmd_play) {
-#ifdef HAVE_AO
-		ao_initialize();
-		for (i = optind; i < argc; i++)
-			play_file(argv[i]);
-		close_audio();
-		ao_shutdown();
-		return 0;
-#else
-		fprintf(stderr, "For audio output, please compile with libao.\n");
-		return 1;
-#endif
-	}
-
-	/* show info */
-	if (cmd_info) {
-		for (i = optind; i < argc; i++)
-			show_info(argv[i]);
-		return 0;
-	}
-	
-	/* channel changing */
-	if (cmd_chg_channels) {
-		for (i = optind; i < argc; i++)
-			set_channels(argv[i], cf_set_chans);
-		return 0;
-	}
-	
-	/* regular converting */
-	if (optind == argc)
-		usage(1);
-	if (fn2) {
-		if (optind + 1 != argc)
-			usage(1);
-		fn = argv[optind];
-		decode_file(fn, fn2);
-	} else {
-		while (optind < argc) {
-			fn = argv[optind++];
-			fn2 = makefn(fn, cf_raw ? ".raw" : ".wav");
-			decode_file(fn, fn2);
-			free(fn2);
-		}
-	}
-	return 0;
-}
-
