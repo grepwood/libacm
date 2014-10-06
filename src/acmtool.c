@@ -278,10 +278,9 @@ static int get_sample_count(const char * fn, uint32_t * wavsize) {
 	return 0;
 }
 
-char * libacm_decode_file_to_mem(const char *fn, int cf_force_chans) {
+char * libacm_decode_file_to_mem(const char *fn, int cf_force_chans, unsigned * wavsize) {
 	ACMStream *acm;
 	char * buf;
-	uint32_t wavsize;
 	int res, buflen, err;
 	char * res2;
 	char * result = NULL;
@@ -292,15 +291,15 @@ char * libacm_decode_file_to_mem(const char *fn, int cf_force_chans) {
 		fprintf(stderr,"%s: %s\n",fn,libacm_strerror(err));
 		return result;
 	}
-	if(get_sample_count(fn,&wavsize)) {
+	if(get_sample_count(fn,wavsize)) {
 		return result;
 	}
 	if(cf_force_chans)
-		wavsize <<= cf_force_chans;
+		*wavsize <<= cf_force_chans;
 	else
-		wavsize <<= acm->info.acm_channels;
-	wavsize += 44; /* WAV header is so big? */
-	result = (char*)malloc(wavsize);
+		*wavsize <<= acm->info.acm_channels;
+	*wavsize += 44; /* WAV header */
+	result = (char*)malloc(*wavsize);
 	if((err = write_wav_header(result,acm,2)) < 0) {
 		acm_close(acm);
 		fputs("couldn't write to buffer",stderr);
