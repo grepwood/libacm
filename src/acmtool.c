@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "libacm.h"
@@ -207,8 +208,8 @@ char * libacm_makefn(const char *fn, const char *ext)
 		p += len; \
 	} while (0)
 
-static int write_wav_header(void *f, ACMStream *acm, char mode) {
-	unsigned char hdr[50], *p = hdr;
+static int write_wav_header(void *f, ACMStream *acm, uint8_t mode) {
+	unsigned char hdr[44], *p = hdr;
 	int res;
 	char * ptrerr;
 	unsigned datalen = acm_pcm_total(acm) * ACM_WORD * acm_channels(acm);
@@ -221,8 +222,13 @@ static int write_wav_header(void *f, ACMStream *acm, char mode) {
 	unsigned block_align = significant_bits * n_channels / 8;
 	unsigned hdrlen = 16;
 	unsigned wavlen = 4 + 8 + hdrlen + 8 + datalen;
-	
-	memset(hdr, 0, sizeof(hdr));
+
+	if(254 & mode) {
+		fputs("Incorrect mode\n",stderr);
+		return -1;
+	}
+
+	memset(hdr, 0, 44);
 	
 	put_data(p, "RIFF", 4);
 	put_dword(p, wavlen);
@@ -239,46 +245,21 @@ static int write_wav_header(void *f, ACMStream *acm, char mode) {
 	put_dword(p, datalen);
 
 	switch(mode) {
-	case 1:
-		res = fwrite(hdr,1,p-hdr,(FILE*)f);
-		printf("p-hdr is %l bytes large\n",p-hdr);
-		if(res != p-hdr)
-			return -1;
-		break;
-	case 2:
-		ptrerr = memcpy((char*)f,hdr,p-hdr);
-		if(ptrerr != (char*)f)
+	case 0:
+		res = fwrite(hdr,1,44,(FILE*)f);
+		if(res != 44)
 			return -2;
 		break;
+	case 1:
+		ptrerr = memcpy((char*)f,hdr,44);
+		if(ptrerr != (char*)f)
+			return -4;
+		break;
 	}
 	return 0;
 }
 
-static int get_sample_count(const char * fn, uint32_t * wavsize) {
-	FILE * acmfile = fopen(fn,"rb");
-	if(!acmfile) {
-		fprintf(stderr, "%s: empty of nonexistent file\n",fn);
-		fclose(acmfile);
-		return 1;
-	}
-	if(fseek(acmfile,4,SEEK_SET)) {
-		fprintf(stderr, "%s: can’t fseek in this file\n",fn);
-		fclose(acmfile);
-		return 2;
-	}
-	if(fread(wavsize,4,1,acmfile) != 1) {
-		fprintf(stderr, "%s: read file incorrect amount of times\n",fn);
-		fclose(acmfile);
-		return 4;
-	}
-#ifdef __BIG_ENDIAN__
-	*wavsize = acm_swap32(*wavsize);
-#endif
-	fclose(acmfile);
-	return 0;
-}
-
-char * libacm_decode_file_to_mem(const char *fn, int cf_force_chans, unsigned * wavsize) {
+char * libacm_decode_file_to_mem(const char *fn, uint8_t cf_force_chans, uint32_t * wavsize) {
 	ACMStream *acm;
 	char * buf;
 	int res, buflen, err;
@@ -287,36 +268,40 @@ char * libacm_decode_file_to_mem(const char *fn, int cf_force_chans, unsigned * 
 	int bytes_done = 0, total_bytes;
 	int bs;
 
+	if(252 & cf_force_chans || cf_force_chans == 3) {
+		fputs("Incorrect channel forcing\n",stderr);
+		return result;
+	}
+
 	if((err = acm_open_file(&acm, fn, cf_force_chans)) < 0) {
 		fprintf(stderr,"%s: %s\n",fn,libacm_strerror(err));
 		return result;
 	}
-	if(get_sample_count(fn,wavsize)) {
-		return result;
-	}
+	*wavsize = acm_pcm_total(acm);
 	if(cf_force_chans)
 		*wavsize <<= cf_force_chans;
 	else
 		*wavsize <<= acm->info.acm_channels;
 	*wavsize += 44; /* WAV header */
 	result = (char*)malloc(*wavsize);
-	if((err = write_wav_header(result,acm,2)) < 0) {
+	if((err = write_wav_header(result,acm,1)) < 0) {
 		acm_close(acm);
 		fputs("couldn't write to buffer",stderr);
 		return result;
 	}
+	puts("Put in the header");
 	buflen = 16384;
 	buf = (char*)malloc(buflen);
 
-	total_bytes = acm_pcm_total(acm) * acm_channels(acm) * ACM_WORD;
+	total_bytes = *wavsize - 44;
 
 	while(bytes_done < total_bytes) {
-		res = acm_read_loop(acm,buf,buflen/2,0,2,1);
+		res = acm_read_loop(acm,buf,8192,0,2,1); /* 8192 is half the buflen */
 		if(!res)
 			break;
 		if(res > 0) {
-			res2 = memcpy(result,buf,res);
-			if(res2 != result) {
+			res2 = memcpy(result+44+bytes_done,buf,res);
+			if(res2 != result+44+bytes_done) {
 				fputs("buffer write error past wav header",stderr);
 				break;
 			}
@@ -337,8 +322,8 @@ char * libacm_decode_file_to_mem(const char *fn, int cf_force_chans, unsigned * 
 		} else {
 			bs = buflen;
 		}
-		res2 = memcpy(result,buf,bs);
-		if(res2 != result)
+		res2 = memcpy(result+44+bytes_done,buf,bs);
+		if(res2 != result+44+bytes_done)
 			break;
 		bytes_done += bs;
 	}
@@ -376,7 +361,7 @@ void libacm_decode_file(const char *fn, const char *fn2, int cf_force_chans) {
 	show_header(fn, acm);
 
 	if ((!cf_raw) && (!cf_no_output)) {
-		if ((err = write_wav_header(fo, acm,1)) < 0) {
+		if ((err = write_wav_header(fo, acm,0)) < 0) {
 			perror(fn2);
 			fclose(fo);
 			acm_close(acm);
@@ -482,8 +467,7 @@ void libacm_set_channels(const char *fn, int n_chan)
  * Just show info
  */
 
-void libacm_show_info(const char *fn, int cf_force_chans)
-{
+void libacm_show_info(const char *fn, int cf_force_chans) {
 	int err;
 	ACMStream *acm;
 
